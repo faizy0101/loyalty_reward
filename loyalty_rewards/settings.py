@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 import os.path
 from pathlib import Path
 
+
 from django.conf.global_settings import AUTH_USER_MODEL
 
 import accounts_app
