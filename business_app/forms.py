@@ -3,7 +3,7 @@
 from django import forms
 from django.forms import fields, widgets
 
-from business_app.models import business, transaction
+from business_app.models import business, transaction, reward
 
 
 class BusinessRegistrationForm(forms.ModelForm):
@@ -53,7 +53,6 @@ class LoyaltySettingsForm(forms.ModelForm):
         'minimum_purchase_amount': forms.NumberInput(attrs={'class': 'form-control','step': '0.01','min': '0'}),}
 
 
-
 class CustomerSearchForm(forms.Form):
     customer_email=forms.EmailField(label='Customer Email',widget=forms.EmailInput(attrs={'class':'form-control','placeholder':'Enter Customer Email'}))
     
@@ -63,3 +62,13 @@ class TransactionForm(forms.ModelForm):
         fields=['customer','purchase_amount']
         widgets={'customer':forms.Select(attrs={'class':'form-select'}),
                 'purchase_amount':forms.NumberInput(attrs={'class':'form-control','placeholder':'Enter purchased amount...','min':'0.01','step':'0.01'}),}
+
+class RewardForm(forms.ModelForm):
+    class Meta:
+        model = reward
+        fields=['reward_name','reward_description','points_required','is_active']
+        widgets={'reward_name': forms.TextInput(attrs={'class': 'form-control','placeholder': 'Enter reward name'}),
+                 'reward_description':forms.Textarea(attrs={'class': 'form-control','placeholder': 'Describe the reward','rows': 3}),
+                 'points_required': forms.NumberInput(attrs={'class': 'form-control','placeholder': 'Enter required points','min': '1'}),
+                 'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),}
+        

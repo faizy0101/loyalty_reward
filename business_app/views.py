@@ -1,14 +1,14 @@
 from email import message
 from multiprocessing import resource_sharer
-
+from django.db import transaction as db_transaction
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Model, Q
-from django.shortcuts import render, redirect
-from business_app.models import business as Business, business, customer
+from django.shortcuts import render, redirect, get_object_or_404
+from business_app.models import business as Business, business, customer, reward, redemption
 from accounts_app.models import User
-from business_app.forms import BusinessRegistrationForm, BusinessLoginForm, BusinessProfileForm, LoyaltySettingsForm, CustomerSearchForm, TransactionForm
+from business_app.forms import BusinessRegistrationForm, BusinessLoginForm, BusinessProfileForm, LoyaltySettingsForm, CustomerSearchForm, TransactionForm, RewardForm
 
 
 
@@ -76,7 +76,15 @@ def business_dashboard(request):
         return redirect('business_login')
     if business_details.approval_status != 'approved':
         return redirect('business_login')
-    return render(request, 'business_dashboard.html',{'business':business_details})
+    total_customers=business_details.customers.count()
+    total_transactions=business_details.transactions.count()
+    total_points_issued=sum(business_details.transactions.values_list('points_earned',flat=True))
+    total_sales = sum(business_details.transactions.values_list('purchase_amount', flat=True))
+
+    return render(request, 'business_dashboard.html',{'business':business_details,'total_customers': total_customers,
+        'total_transactions': total_transactions,
+        'total_points_issued': total_points_issued,
+        'total_sales': total_sales,})
 
 def business_profile(request):
     try:
@@ -163,19 +171,166 @@ def add_transactions(request):
             purchase_amount=form.cleaned_data['purchase_amount']
             if not business_details.loyalty_program_active:
                 messages.error(request, 'Inactive...')
-            elif purchase_amount<business_details.minimum_purchase_amount:
-                messages.error(request, 'purchase amount is below of minimum...')
+            elif business_details.purchase_amount_for_points <= 0:
+                messages.error(request,'Invalid - Purchase amount per point must be greater than zero.')
+            elif purchase_amount < business_details.minimum_purchase_amount:
+                messages.error(request,'Purchase amount is below the minimum required amount.')
             else:
-                points=int(purchase_amount//business_details.purchase_amount_for_points)*business_details.points_earned
+                points = int(purchase_amount // business_details.purchase_amount_for_points) * business_details.points_earned
 
                 transaction_details=form.save(commit=False)
                 transaction_details.business=business_details
                 transaction_details.points_earned=points
                 transaction_details.save()
+                customer_details.loyalty_points += points
+                customer_details.save()
 
-                messages.success(request, f'Done - {points} earned ')
+                messages.success(request, f'Done - {points} points earned ')
                 return redirect('add_transactions')
     else:
         form=TransactionForm()
         form.fields['customer'].queryset=customer.objects.filter(business=business_details)
     return render(request, 'add_transaction.html', {'form':form})
+
+def transaction_history(request):
+    try:
+        business_details = request.user.business
+    except Business.DoesNotExist:
+        return redirect('business_login')
+    transactions=business_details.transactions.select_related('customer__user').order_by('-created_at')
+    return render(request, 'transaction_history.html', {'transactions':transactions})
+
+def add_reward(request):
+    try:
+        business_details = request.user.business
+    except Business.DoesNotExist:
+        return redirect('business_login')
+    if request.method=='POST':
+        form=RewardForm(request.POST)
+        if form.is_valid():
+            reward_detail=form.save(commit=False)
+            reward_detail.business=business_details
+            reward_detail.save()
+
+            messages.success(request, 'Reward Added')
+    else:
+        form=RewardForm()
+    return render(request, 'add_reward.html', {'form': form})
+
+def reward_list(request):
+    try:
+        business_details = request.user.business
+    except Business.DoesNotExist:
+        return redirect('business_login')
+    rewards=business_details.rewards.all().order_by('-created_at')
+    return render(request, 'reward_list.html', {'rewards':rewards})
+
+def edit_reward(request, reward_id):
+    try:
+        business_details = request.user.business
+    except Business.DoesNotExist:
+        return redirect('business_login')
+    reward_details=get_object_or_404(reward, id=reward_id, business=business_details)
+    if request.method=='POST':
+        form=RewardForm(request.POST, instance=reward_details)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Reward Updated')
+            return redirect('reward_list')
+    else:
+        form=RewardForm(instance=reward_details)
+    return render(request, 'edit_reward.html', {'form': form, 'reward_details':reward_details})
+
+def toggle_reward_status(request,reward_id):
+    try:
+        business_details = request.user.business
+    except Business.DoesNotExist:
+        return redirect('business_login')
+    reward_details=get_object_or_404(reward, id=reward_id, business=business_details)
+    if request.method=='POST':
+        reward_details.is_active= not reward_details.is_active
+        reward_details.save()
+
+        messages.success(request, 'Reward Updated')
+    return redirect('reward_list')
+
+def redemption_requests(request):
+    try:
+        business_details = request.user.business
+    except Business.DoesNotExist:
+        return redirect('business_login')
+    redemptions=redemption.objects.filter(reward__business=business_details).select_related('customer__user','reward').order_by('-created_at')
+    return render(request, 'redemption_requests.html', {'redemptions':redemptions})
+
+
+def update_redemption_status(request, redemption_id):
+
+    if request.method != 'POST':
+        return redirect('redemption_requests')
+
+    try:
+        business_details = request.user.business
+    except Business.DoesNotExist:
+        return redirect('business_login')
+
+    with db_transaction.atomic():
+
+        redemption_details = get_object_or_404(
+            redemption.objects.select_for_update(),
+            id=redemption_id,
+            reward__business=business_details
+        )
+
+        new_status = request.POST.get('status')
+
+        if new_status == 'approved':
+
+            if redemption_details.status != 'pending':
+                messages.error(request, 'This request has already been processed.')
+                return redirect('redemption_requests')
+
+            redemption_details.status = 'approved'
+            redemption_details.save()
+
+            messages.success(request, 'Redemption request approved.')
+
+        elif new_status == 'fulfilled':
+
+            if redemption_details.status != 'approved':
+                messages.error(request, 'Only approved requests can be fulfilled.')
+                return redirect('redemption_requests')
+
+            redemption_details.status = 'fulfilled'
+            redemption_details.save()
+
+            messages.success(request, 'Reward successfully fulfilled.')
+
+        elif new_status == 'rejected':
+
+            if redemption_details.status not in ['pending', 'approved']:
+                messages.error(request, 'This request cannot be rejected.')
+                return redirect('redemption_requests')
+
+            customer_details = customer.objects.select_for_update().get(
+                id=redemption_details.customer_id
+            )
+
+            customer_details.loyalty_points += redemption_details.points_deducted
+            customer_details.save()
+
+            redemption_details.status = 'rejected'
+            redemption_details.save()
+
+            messages.success(request, 'Request rejected. Customer points refunded.')
+        else:
+            messages.error(request, 'Invalid status.')
+    return redirect('redemption_requests')
+
+def business_fulfillment_history(request):
+    try:
+        business_details = request.user.business
+    except business.DoesNotExist:
+        return redirect('business_login')
+    fulfilled_redemptions=redemption.objects.filter(reward__business=business_details, status='fulfilled').select_related('customer__user','reward').order_by('-created_at')
+    return render(request, 'business_fulfillment_history.html', {'business': business_details,'fulfilled_redemptions': fulfilled_redemptions,})
+

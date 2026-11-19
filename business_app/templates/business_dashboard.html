@@ -79,15 +79,22 @@
             <a href="{% url 'add_customer' %}">
                 Customers
             </a>
-
+<a href="{% url 'redemption_requests' %}" class="nav-link">
+    Redemption Requests
+</a>
             <a href="{% url 'add_transactions' %}">
-                Transactions
+                Record Transactions
             </a>
 
-            <a href="#">
-                Rewards
+            <a href="{% url 'add_reward' %}" class="nav-link">
+    Rewards
+</a>
+            <a href="{% url 'transaction_history' %}">
+                Transaction history
             </a>
-
+            <a href="{% url 'business_fulfillment_history' %}">
+    Fulfillment History
+</a>
             <hr>
 
             <a href="{% url 'business_login' %}">
@@ -136,21 +143,21 @@
                 <div class="col-md-4 mb-3">
                     <div class="card dashboard-card p-4">
                         <h6 class="text-muted">Total Customers</h6>
-                        <h2>0</h2>
+                        <h2>{{ total_customers }}</h2>
                     </div>
                 </div>
 
                 <div class="col-md-4 mb-3">
                     <div class="card dashboard-card p-4">
                         <h6 class="text-muted">Coins Issued</h6>
-                        <h2>0</h2>
+                        <h2>{{ total_points_issued }}</h2>
                     </div>
                 </div>
 
                 <div class="col-md-4 mb-3">
                     <div class="card dashboard-card p-4">
                         <h6 class="text-muted">Today's Transactions</h6>
-                        <h2>0</h2>
+                        <h2>₹{{ total_sales }}</h2>
                     </div>
                 </div>
 

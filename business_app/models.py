@@ -52,4 +52,22 @@ class transaction(models.Model):
         return f"{self.customer.user.username} - {self.purchase_amount}"
 
 
+class reward(models.Model):
+    business=models.ForeignKey(business,on_delete=models.CASCADE,related_name='rewards')
+    reward_name=models.CharField(max_length=100)
+    reward_description=models.TextField()
+    points_required=models.PositiveIntegerField()
+    is_active=models.BooleanField(default=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    def __str__(self):
+        return self.reward_name
 
+class redemption(models.Model):
+    REDEMPTION_STATUS=[('pending','Pending'),('approved','Approved'),('rejected','Rejected'),('fulfilled','Fullfilled')]
+    customer=models.ForeignKey(customer, on_delete=models.CASCADE, related_name='redemptions')
+    reward=models.ForeignKey(reward, on_delete=models.CASCADE, related_name='redemptions')
+    points_deducted=models.PositiveIntegerField()
+    status=models.CharField(max_length=30,choices=REDEMPTION_STATUS, default='pending')
+    created_at=models.DateTimeField(auto_now_add=True)
+    def __str__(self):
+        return f"{self.customer.user.username} - {self.reward.reward_name}"
